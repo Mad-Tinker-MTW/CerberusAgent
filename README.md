@@ -5,8 +5,15 @@ folder through a Cloudflare quick tunnel and registers the public URL + track li
 to their dossier. The artist's machine is the storage; Cerberus stores only the
 tunnel URL. Keep it running while you want your media live.
 
-This is the engine core (Node/Bun). The branded setup wizard (desktop GUI) wraps
-this same core.
+Two forms:
+- **`desktop/`** — the branded **Tauri v2** wizard app (Rust backend reimplements the
+  engine; React/TS frontend). This is the product artists download. Build:
+  `cd desktop && bun install && bun run tauri build` (dev: `bun run tauri dev`).
+  Framework rationale in `DECISION-framework.md`.
+- **`src/agent.mjs`** — the original Bun engine, kept as a reference implementation and a
+  working CLI fallback.
+
+The notes below cover the CLI engine.
 
 ## Prereqs
 - [bun](https://bun.sh)
