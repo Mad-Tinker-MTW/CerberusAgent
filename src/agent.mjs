@@ -9,7 +9,9 @@
 // This is the engine. The branded wizard GUI (Tauri/Electron) wraps this same core.
 //
 // Usage:  bun run src/agent.mjs [path/to/config.json]
-// Config: { "slug", "agentKey", "musicDir", "platformUrl", "port"? }
+// Config: { "slug", "agentKey", "musicDir", "platformUrl", "port"?, "tunnelToken"? }
+//   tunnelToken (from /account "Set up streaming") runs a stable named Cerberus tunnel.
+//   Without it the agent falls back to an ephemeral quick tunnel.
 
 import { readdirSync, statSync, existsSync } from "node:fs";
 import { resolve, join, extname, basename, sep } from "node:path";
@@ -100,29 +102,15 @@ const server = Bun.serve({
 });
 log(`serving on http://localhost:${port}`);
 
-// --- cloudflared quick tunnel ---------------------------------------------
-log("opening cloudflared tunnel...");
-const cf = spawn("cloudflared", ["tunnel", "--url", `http://localhost:${port}`]);
-let tunnelUrl = null;
-async function onTunnel(url) {
-  tunnelUrl = url;
-  log(`tunnel: ${url}`);
-  await register();
-}
-const scan = (buf) => {
-  const m = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i.exec(buf.toString());
-  if (m && !tunnelUrl) onTunnel(m[0]);
-};
-cf.stdout.on("data", scan);
-cf.stderr.on("data", scan); // cloudflared prints the URL to stderr
-
 // --- register with the platform -------------------------------------------
-async function register() {
+// `extra` is either { named: true } (token mode: the platform derives the public host from the
+// provisioned media_origin) or { tunnelUrl } (legacy quick tunnel: report the trycloudflare URL).
+async function register(extra) {
   try {
     const res = await fetch(`${platformUrl.replace(/\/$/, "")}/api/agent/register`, {
       method: "POST",
       headers: { Authorization: `Bearer ${agentKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ tunnelUrl, tracks }),
+      body: JSON.stringify({ tracks, ...extra }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) log(`registered: ${data.tracks} tracks live on ${platformUrl}/artist/${slug}`);
@@ -130,6 +118,38 @@ async function register() {
   } catch (e) {
     log(`register error: ${e}`);
   }
+}
+
+// --- cloudflared tunnel ----------------------------------------------------
+// Named token mode (cfg.tunnelToken) is the production path: a stable Cerberus-provisioned
+// tunnel terminating at the hidden t-<slug>.cerberuslive.studio host. Quick-tunnel mode stays
+// as a fallback for unprovisioned/dev use.
+let cf;
+let registered = false;
+if (cfg.tunnelToken) {
+  log("starting named cloudflared tunnel (token mode)...");
+  cf = spawn("cloudflared", ["tunnel", "run", "--token", cfg.tunnelToken]);
+  const onData = (buf) => {
+    if (!registered && /Registered tunnel connection/i.test(buf.toString())) {
+      registered = true;
+      log("tunnel connection registered");
+      register({ named: true });
+    }
+  };
+  cf.stdout.on("data", onData);
+  cf.stderr.on("data", onData);
+  // Fallback: register even if the connection log line never matches.
+  setTimeout(() => { if (!registered) { registered = true; register({ named: true }); } }, 10000);
+} else {
+  log("opening cloudflared quick tunnel...");
+  cf = spawn("cloudflared", ["tunnel", "--url", `http://localhost:${port}`]);
+  let tunnelUrl = null;
+  const scan = (buf) => {
+    const m = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i.exec(buf.toString());
+    if (m && !tunnelUrl) { tunnelUrl = m[0]; log(`tunnel: ${tunnelUrl}`); register({ tunnelUrl }); }
+  };
+  cf.stdout.on("data", scan);
+  cf.stderr.on("data", scan); // cloudflared prints the URL to stderr
 }
 
 log("agent running. Keep this window open to stay live. Ctrl+C to stop.");

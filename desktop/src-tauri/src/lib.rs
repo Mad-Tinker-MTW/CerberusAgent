@@ -199,6 +199,7 @@ fn start_agent(
     agent_key: String,
     platform_url: String,
     port: Option<u16>,
+    tunnel_token: Option<String>,
     state: State<'_, AgentState>,
 ) -> Result<Status, String> {
     let port = port.unwrap_or(8787);
@@ -221,28 +222,44 @@ fn start_agent(
         });
     }
 
-    let mut child = Command::new("cloudflared")
-        .args(["tunnel", "--url", &format!("http://localhost:{port}")])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("cloudflared not found: {e}"))?;
+    // Named token mode (provisioned streaming) is the production path; quick tunnel is the
+    // unprovisioned fallback. In named mode the platform derives the public host from the
+    // stored media_origin, so there is no trycloudflare URL to parse.
+    let named = tunnel_token.as_deref().map(|t| !t.is_empty()).unwrap_or(false);
 
-    let (tx, rx) = mpsc::channel::<String>();
-    if let Some(out) = child.stdout.take() {
-        spawn_url_reader(out, tx.clone());
-    }
-    if let Some(err) = child.stderr.take() {
-        spawn_url_reader(err, tx.clone());
-    }
-
-    let tunnel = rx
-        .recv_timeout(Duration::from_secs(40))
-        .map_err(|_| "Tunnel did not come up in time".to_string())?;
+    let (child, body, tunnel_marker) = if named {
+        let token = tunnel_token.as_deref().unwrap();
+        let child = Command::new("cloudflared")
+            .args(["tunnel", "run", "--token", token])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("cloudflared not found: {e}"))?;
+        // Give the named tunnel a moment to connect before publishing the track list.
+        thread::sleep(Duration::from_secs(4));
+        (child, serde_json::json!({ "named": true, "tracks": tracks }), None::<String>)
+    } else {
+        let mut child = Command::new("cloudflared")
+            .args(["tunnel", "--url", &format!("http://localhost:{port}")])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("cloudflared not found: {e}"))?;
+        let (tx, rx) = mpsc::channel::<String>();
+        if let Some(out) = child.stdout.take() {
+            spawn_url_reader(out, tx.clone());
+        }
+        if let Some(err) = child.stderr.take() {
+            spawn_url_reader(err, tx.clone());
+        }
+        let tunnel = rx
+            .recv_timeout(Duration::from_secs(40))
+            .map_err(|_| "Tunnel did not come up in time".to_string())?;
+        (child, serde_json::json!({ "tunnelUrl": tunnel, "tracks": tracks }), Some(tunnel))
+    };
 
     *state.cf.lock().unwrap() = Some(child);
 
-    let body = serde_json::json!({ "tunnelUrl": tunnel, "tracks": tracks });
     let url = format!("{}/api/agent/register", platform_url.trim_end_matches('/'));
     let message = match ureq::post(&url)
         .set("Authorization", &format!("Bearer {}", agent_key))
@@ -252,7 +269,7 @@ fn start_agent(
         Err(e) => format!("Serving, but register failed: {e}"),
     };
 
-    let status = Status { running: true, tunnel_url: Some(tunnel), track_count: tracks.len(), message };
+    let status = Status { running: true, tunnel_url: tunnel_marker, track_count: tracks.len(), message };
     *state.status.lock().unwrap() = status.clone();
     Ok(status)
 }

@@ -14,6 +14,7 @@ export default function App() {
   const [platformUrl, setPlatformUrl] = useState(() => load("cb_platform", DEFAULT_PLATFORM));
   const [agentKey, setAgentKey] = useState(() => load("cb_key", ""));
   const [musicDir, setMusicDir] = useState(() => load("cb_dir", ""));
+  const [tunnelToken, setTunnelToken] = useState(() => load("cb_token", ""));
   const [tracks, setTracks] = useState<Track[]>([]);
   const [ack, setAck] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
@@ -24,7 +25,8 @@ export default function App() {
     localStorage.setItem("cb_platform", platformUrl);
     localStorage.setItem("cb_key", agentKey);
     localStorage.setItem("cb_dir", musicDir);
-  }, [platformUrl, agentKey, musicDir]);
+    localStorage.setItem("cb_token", tunnelToken);
+  }, [platformUrl, agentKey, musicDir, tunnelToken]);
 
   useEffect(() => {
     invoke<Status>("agent_status").then(setStatus).catch(() => {});
@@ -60,6 +62,7 @@ export default function App() {
         agentKey: agentKey.trim(),
         platformUrl: platformUrl.trim(),
         port: 8787,
+        tunnelToken: tunnelToken.trim() || null,
       });
       setStatus(s);
     } catch (e) {
@@ -102,6 +105,10 @@ export default function App() {
           <label className="fld">
             <span>Agent key <em>(from your Cerberus account)</em></span>
             <input value={agentKey} onChange={(e) => setAgentKey(e.target.value)} placeholder="paste your key" />
+          </label>
+          <label className="fld">
+            <span>Streaming token <em>(from "Set up streaming"; optional)</em></span>
+            <input value={tunnelToken} onChange={(e) => setTunnelToken(e.target.value)} placeholder="paste your streaming token" />
           </label>
           <label className="fld">
             <span>Music folder</span>
