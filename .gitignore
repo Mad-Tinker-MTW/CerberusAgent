@@ -1,0 +1,7 @@
+node_modules/
+dist/
+build/
+out/
+# Local agent config holds the artist's agent key — never commit it.
+cerberus-agent.config.json
+*.log

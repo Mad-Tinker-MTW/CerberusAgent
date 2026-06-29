@@ -1,0 +1,7 @@
+{
+  "slug": "your-artist-slug",
+  "agentKey": "paste-your-agent-key-from-your-Cerberus-account",
+  "musicDir": "C:\\path\\to\\your\\music",
+  "platformUrl": "https://cerberuslive-web.frankydlp.workers.dev",
+  "port": 8787
+}

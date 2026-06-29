@@ -1,0 +1,10 @@
+{
+  "name": "cerberus-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cerberus Live Studio self-host media agent — serves an artist's local music folder through a Cloudflare tunnel and registers it to their dossier.",
+  "scripts": {
+    "start": "bun run src/agent.mjs"
+  }
+}
