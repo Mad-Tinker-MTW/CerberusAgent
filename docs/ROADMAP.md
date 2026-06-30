@@ -47,3 +47,16 @@ Goal: ship it to artists and round off the edges.
 - [ ] In-app agent-key / streaming-token fetch (less copy-paste)
 - [ ] Register CerberusAgent in TinkerOps
 - [ ] Re-home Stage 1-3 build hours from CLS-PMD-003
+
+---
+
+## Stage 5: Type-aware Library + Auto-sync (L-048 Phase 3, complete)
+Goal: mirror the platform's discography model and keep the dossier in sync live.
+Built after Stage 3; Stage 4 distribution remains planned.
+
+- [x] Recursive persona-aware scan (folder=persona, subfolder=release, root=direct single)
+- [x] Embedded-tag auto-import via ffprobe (Album Artist/Album/Track/Composer/Title)
+- [x] Video support (.mp4/.webm/.mov/.m4v/.mkv, media_kind=video)
+- [x] Debounced recursive file watcher (re-scan + re-register, no restart)
+- [x] Richer register payload (persona/release/releaseKind/mediaKind/trackNo/composer)
+- [ ] Live run-through against a real per-persona library

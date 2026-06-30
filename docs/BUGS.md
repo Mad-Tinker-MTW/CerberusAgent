@@ -22,6 +22,10 @@ A platform-side admin-hosted R2 tier is the longer-term answer for always-on art
 
 ## Closed
 
+- Flat root scan registered 0 tracks for per-persona subfolders (2026-06-29): the engine scanned
+  only the top level once at startup, so an artist whose files were organized into per-persona
+  subfolders registered nothing. Fixed by the recursive persona-aware scan + file watcher
+  (L-048 Phase 3, v0.2.0). Reconcile verified against the platform D1; live run-through pending.
 - Account-less quick tunnels do not serve reliably / three-level media host had no TLS cert (2026-06-29):
   resolved at the platform level by moving to Cerberus-provisioned named tunnels terminating at hidden
   two-level origins (`t-<slug>.cerberuslive.studio`) behind a gateway worker with an R2 cache. The agent

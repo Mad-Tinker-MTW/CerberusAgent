@@ -64,15 +64,28 @@ Project Manager: Francisco De La Paz
 
 ---
 
-#### 1.5 Project Management (ongoing)
+#### 1.5 Stage 5: Type-aware Library + Auto-sync (L-048 Phase 3), Complete
 
 | ID | Task | Status |
 |---|---|---|
-| 1.5.1 | Maintain BUGS.md | Ongoing |
-| 1.5.2 | Maintain CHANGELOG.md | Ongoing |
-| 1.5.3 | Update ROADMAP.md checkboxes per stage | Ongoing |
-| 1.5.4 | GitHub commits per session | Ongoing |
-| 1.5.5 | Re-home Stage 1-3 build hours from CLS-PMD-003 to this WBS at next /audit-project | Pending |
+| 1.5.1 | Recursive persona-aware scan (folder=persona, subfolder=release, root file=direct single; fixes the flat-scan 0-tracks bug) | Complete |
+| 1.5.2 | Embedded-tag auto-import via ffprobe (Album Artist/Artist -> persona, Album -> release, Track -> number, Composer, Title; tags win, folders fallback) | Complete |
+| 1.5.3 | Video support (.mp4/.webm/.mov/.m4v/.mkv MIME, registered media_kind=video) | Complete |
+| 1.5.4 | Debounced recursive file watcher: re-scan + re-register on change (no restart) | Complete |
+| 1.5.5 | Richer register payload (persona/release/releaseKind/mediaKind/trackNo/composer) for the platform reconcile | Complete |
+| 1.5.6 | Live run-through against a real per-persona library | Pending |
+
+---
+
+#### 1.6 Project Management (ongoing)
+
+| ID | Task | Status |
+|---|---|---|
+| 1.6.1 | Maintain BUGS.md | Ongoing |
+| 1.6.2 | Maintain CHANGELOG.md | Ongoing |
+| 1.6.3 | Update ROADMAP.md checkboxes per stage | Ongoing |
+| 1.6.4 | GitHub commits per session | Ongoing |
+| 1.6.5 | Re-home Stage 1-3 build hours from CLS-PMD-003 to this WBS at next /audit-project | Pending |
 
 ---
 
@@ -88,4 +101,5 @@ file yet to avoid double-counting.
 | 2026-06-28 | CLI engine (serve + tunnel + register) | Lead Developer | 4.0 | CLS-PMD-003 |
 | 2026-06-28 | Desktop wizard (Tauri v2, Rust + React) | Lead Developer | 4.5 | CLS-PMD-003 |
 | 2026-06-29 | Named token-mode (engine + desktop) | Lead Developer | 2.5 | CLS-PMD-003 |
-| **Subtotal (cross-referenced, not re-counted)** | | | **11.0** | |
+| 2026-06-29 | Type-aware library + auto-sync (L-048 P3): recursive scan, ffprobe tags, video, watcher | Lead Developer | 2.0 | CLS-PMD-003 (1.3.15) |
+| **Subtotal (cross-referenced, not re-counted)** | | | **13.0** | |

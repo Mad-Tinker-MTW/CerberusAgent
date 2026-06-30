@@ -1,5 +1,29 @@
 # Changelog — Cerberus Agent
 
+## [0.2.0] — 2026-06-29
+
+Type-aware library + auto-sync (L-048 Phase 3). The engine now mirrors the platform's new
+discography model and keeps the dossier current without a restart.
+
+### Added
+- **Recursive, persona-aware scan**: the agent walks the music folder (was a flat top-level scan).
+  Folder = persona, sub-folder = release; a file at the root is a direct single. Fixes the bug where
+  per-persona subfolders registered 0 tracks.
+- **Embedded-tag auto-import** (via ffprobe): Album Artist / Artist -> persona, Album -> release,
+  Track -> track number, Composer -> the human creator, Title -> title. Tags win over folder names;
+  folder structure is the fallback for untagged originals.
+- **Video support**: .mp4 / .webm / .mov / .m4v / .mkv served with correct MIME and registered as
+  media_kind=video (the platform's video lane / Live Sets tab).
+- **File watcher**: a debounced recursive fs.watch re-scans and re-registers on any change, so
+  adding or editing files updates the dossier live (no restart).
+- **Richer register payload**: each track now carries persona / release / releaseKind / mediaKind /
+  trackNo / composer, which the platform reconciles (find-or-create personas/releases, replace only
+  agent-managed tracks, preserve artist-edited dedications).
+
+### Notes
+- Built + parsed clean; the register reconcile is verified against the platform D1. The live
+  filesystem scan + watcher has not yet been run against a real per-persona library (next run-through).
+
 ## [0.1.0] — 2026-06-29
 
 First release line of the Cerberus Live Studio self-host media agent. Built across three same-week
