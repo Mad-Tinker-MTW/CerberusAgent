@@ -1,5 +1,35 @@
 # Changelog — Cerberus Agent
 
+## [0.3.0] — 2026-06-30
+
+Desktop backend reaches parity with the engine. The 0.2.0 rework landed only in the Bun engine
+(`src/agent.mjs`); the Tauri desktop app's Rust backend (`desktop/src-tauri/src/lib.rs`) was still
+running the original flat, audio-only, top-level scan — so the desktop app missed music in
+subfolders, ignored video, imported no tags, and never re-synced. This release ports the full
+L-048 scan model to Rust.
+
+### Fixed
+- **Desktop flat-scan bug**: `list_tracks` (top-level `read_dir`, audio-only, duration-only, flat
+  payload) replaced with the recursive persona-aware `build_tracks`. The desktop app now picks up
+  per-persona subfolders and nested releases that previously registered nothing.
+
+### Added (desktop, porting the engine's 0.2.0 behavior)
+- Recursive folder walk (persona = folder, release = sub-folder, root file = direct single).
+- Embedded-tag auto-import via ffprobe (album_artist/artist -> persona, album -> release, track ->
+  track no, composer, title); tags win over folder names.
+- Video support (.mp4/.webm/.mov/.m4v/.mkv) with correct MIME + `mediaKind=video`.
+- Release-kind heuristic (single/ep/album by track count) and featured = first audio track.
+- Recursive file watcher (`notify` crate): debounced ~2s re-scan + re-register on change, so the
+  desktop app keeps the dossier current without a restart.
+- Rich register payload matching the engine (persona / release / releaseKind / mediaKind / trackNo /
+  composer), and nested-path serving through the existing Range+CORS server.
+
+### Verified
+- `cargo check` clean; a unit test (`recursive_persona_release_scan`) covers recursion,
+  folder-derived persona/release, video detection, the release-kind heuristic, and direct singles.
+- REMAINING: desktop GUI run-through (launch the built app, click the wizard, confirm a real
+  multi-subfolder library registers end-to-end). Needs the operator at the machine (L-045).
+
 ## [0.2.0] — 2026-06-29
 
 Type-aware library + auto-sync (L-048 Phase 3). The engine now mirrors the platform's new
