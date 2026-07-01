@@ -478,6 +478,59 @@ fn start_agent(
     Ok(status)
 }
 
+/// Location of the persisted agent identity: %APPDATA%\Cerberus\agent.json.
+/// Isolated from webview localStorage so a compromised page can't read the keys.
+fn config_path() -> Result<PathBuf, String> {
+    let appdata = std::env::var("APPDATA").map_err(|_| "APPDATA not set".to_string())?;
+    let dir = PathBuf::from(appdata).join("Cerberus");
+    fs::create_dir_all(&dir).map_err(|e| format!("could not create config dir: {e}"))?;
+    Ok(dir.join("agent.json"))
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
+struct AgentConfig {
+    slug: String,
+    #[serde(rename = "agentKey")]
+    agent_key: String,
+    #[serde(rename = "tunnelToken")]
+    tunnel_token: String,
+    #[serde(rename = "mediaOrigin")]
+    media_origin: String,
+    #[serde(rename = "platformUrl")]
+    platform_url: String,
+    #[serde(default, rename = "musicDir")]
+    music_dir: String,
+}
+
+#[tauri::command]
+fn save_config(config: AgentConfig) -> Result<(), String> {
+    let path = config_path()?;
+    let tmp = path.with_extension("json.tmp");
+    let bytes = serde_json::to_vec_pretty(&config).map_err(|e| e.to_string())?;
+    fs::write(&tmp, bytes).map_err(|e| format!("write failed: {e}"))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("rename failed: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn load_config() -> Option<AgentConfig> {
+    let path = config_path().ok()?;
+    if !path.exists() {
+        return None;
+    }
+    let bytes = fs::read(&path).ok()?;
+    serde_json::from_slice::<AgentConfig>(&bytes).ok()
+}
+
+#[tauri::command]
+fn clear_config() -> Result<(), String> {
+    let path = config_path()?;
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| format!("delete failed: {e}"))?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn stop_agent(state: State<'_, AgentState>) -> Status {
     stop_internal(&state);
@@ -534,7 +587,15 @@ pub fn run() {
         .manage(AgentState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![scan_folder, start_agent, stop_agent, agent_status])
+        .invoke_handler(tauri::generate_handler![
+            scan_folder,
+            start_agent,
+            stop_agent,
+            agent_status,
+            save_config,
+            load_config,
+            clear_config
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
