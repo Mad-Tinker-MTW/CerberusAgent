@@ -428,19 +428,33 @@ fn start_agent(
 
     let (child, extra, tunnel_marker) = if named {
         let token = tunnel_token.as_deref().unwrap();
-        let child = Command::new("cloudflared")
-            .args(["tunnel", "run", "--token", token])
+        let mut cmd = Command::new("cloudflared");
+        cmd.args(["tunnel", "run", "--token", token])
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        // cloudflared runs as a background service; on Windows a plain spawn pops a console
+        // window a non-technical artist could close and kill their own stream. Hide it.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let child = cmd
             .spawn()
             .map_err(|e| format!("cloudflared not found: {e}"))?;
         thread::sleep(Duration::from_secs(4));
         (child, json!({ "named": true }), None::<String>)
     } else {
-        let mut child = Command::new("cloudflared")
-            .args(["tunnel", "--url", &format!("http://localhost:{port}")])
+        let mut cmd = Command::new("cloudflared");
+        cmd.args(["tunnel", "--url", &format!("http://localhost:{port}")])
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let mut child = cmd
             .spawn()
             .map_err(|e| format!("cloudflared not found: {e}"))?;
         let (tx, rx) = mpsc::channel::<String>();
