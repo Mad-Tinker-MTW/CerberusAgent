@@ -1,0 +1,53 @@
+name: Release
+
+# Builds the Cerberus Agent desktop installer and publishes it as a GitHub Release
+# asset on a version tag. This is the downloadable on-ramp (flow-plan Invariant #2):
+# an artist grabs the installer from the release page, runs it, points it at their
+# music folder, and pastes their agent key + streaming token from cerberuslive.studio.
+# Tag a release with:  git tag v0.4.0 && git push origin v0.4.0
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: bun install --frozen-lockfile
+
+      # tauri-action runs the config's beforeBuildCommand (bun run build) then
+      # `tauri build`, producing the NSIS installer, and uploads it to the release.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: "Cerberus Agent ${{ github.ref_name }}"
+          releaseBody: |
+            Cerberus Agent — self-host your media from your own PC.
+
+            1. Download and run the installer below.
+            2. Sign in at cerberuslive.studio, go to /account, and copy your agent key + streaming token.
+            3. Browse to your music folder, paste the key + token, and go live.
+          releaseDraft: false
+          prerelease: false
