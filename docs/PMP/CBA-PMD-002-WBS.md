@@ -102,4 +102,6 @@ file yet to avoid double-counting.
 | 2026-06-28 | Desktop wizard (Tauri v2, Rust + React) | Lead Developer | 4.5 | CLS-PMD-003 |
 | 2026-06-29 | Named token-mode (engine + desktop) | Lead Developer | 2.5 | CLS-PMD-003 |
 | 2026-06-29 | Type-aware library + auto-sync (L-048 P3): recursive scan, ffprobe tags, video, watcher | Lead Developer | 2.0 | CLS-PMD-003 (1.3.15) |
-| **Subtotal (cross-referenced, not re-counted)** | | | **13.0** | |
+| 2026-07-07 | Installer release CI (release.yml, tauri-action, v* tag -> NSIS installer as GitHub Release) + v0.4.0 build | Lead Developer | 1.0 | CLS-PMD-003 |
+| 2026-07-07 | v0.4.0 installer publish + no-paste device-auth on-ramp end-to-end verify | Deployment Engineer | 0.5 | CLS-PMD-003 |
+| **Subtotal (cross-referenced, not re-counted)** | | | **14.5** | |

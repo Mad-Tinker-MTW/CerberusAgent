@@ -1,5 +1,27 @@
 # Changelog — Cerberus Agent
 
+## [0.4.0] — 2026-07-07
+
+The Agent became a real, downloadable, no-paste client.
+
+### Added
+- Release CI (`.github/workflows/release.yml`): a `v*` tag builds the NSIS installer via
+  tauri-action and publishes it as a GitHub Release asset. First artifact:
+  `Cerberus.Agent_0.4.0_x64-setup.exe` (tag v0.4.0). This is the downloadable on-ramp the
+  platform lacked ("i cant get the app" on 7/1).
+
+### Verified
+- No-paste device-authorization onboarding proven end to end on real hardware: install ->
+  "Get a new code" -> enter at cerberuslive.studio/device -> approve -> the Agent self-configures
+  (no key/token paste) -> folder pick -> served 21 tracks + full discography to the artist page.
+  (Required deploying the platform device routes + fixing their CORS; see CLS 0.12.0.)
+
+### Known
+- The spawned cloudflared tunnel opens a visible console window (Command::new without
+  CREATE_NO_WINDOW). Must stay open while serving, but should be hidden in a polished build.
+- Device-auth uses browser `fetch()` from the Tauri webview, so the platform routes must send
+  CORS (fixed platform-side this session).
+
 ## [0.3.0] — 2026-06-30
 
 Desktop backend reaches parity with the engine. The 0.2.0 rework landed only in the Bun engine
