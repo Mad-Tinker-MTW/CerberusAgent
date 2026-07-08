@@ -1,5 +1,15 @@
 # Changelog — Cerberus Agent
 
+## [0.5.0] — 2026-07-08
+
+### Added
+- Embedded cover-art reading in the desktop scan (`extract_cover`): each audio file's embedded
+  picture (APIC / attached picture) is pulled to a served sidecar under `.cerberus-covers/` via
+  ffmpeg, and the scan reports its relative path so the platform can build a cover URL. Best-effort:
+  a file with no art, or a missing ffmpeg, just yields no cover. (cerberuslive L-057)
+- Image content-types (jpg/png/webp/gif) in the local static server so the extracted sidecar covers
+  serve through the media gateway.
+
 ## [0.4.0] — 2026-07-07
 
 The Agent became a real, downloadable, no-paste client.

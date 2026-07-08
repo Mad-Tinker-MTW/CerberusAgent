@@ -45,6 +45,9 @@ struct Track {
     #[serde(rename = "releaseKind")]
     release_kind: Option<String>,
     featured: bool,
+    // Relative path to the embedded cover art extracted to a served sidecar, or None when the
+    // file carries no art. The register route turns this into a gateway URL.
+    cover: Option<String>,
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -83,7 +86,50 @@ fn mime_for(path: &Path) -> &'static str {
         "mov" => "video/quicktime",
         "m4v" => "video/x-m4v",
         "mkv" => "video/x-matroska",
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
         _ => "application/octet-stream",
+    }
+}
+
+const COVERS_DIR: &str = ".cerberus-covers";
+
+/// Deterministic, filesystem-safe sidecar path for a track's extracted cover, under COVERS_DIR.
+/// Same input always yields the same name, so a re-scan overwrites rather than piling up files.
+fn cover_sidecar_name(rel_url: &str) -> String {
+    let no_ext = rel_url.rsplit_once('.').map(|(a, _)| a).unwrap_or(rel_url);
+    let safe: String = no_ext
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' })
+        .collect();
+    let t = safe.trim_matches('_');
+    format!("{}/{}.jpg", COVERS_DIR, if t.is_empty() { "cover" } else { t })
+}
+
+/// Extract a file's embedded cover art (APIC / attached picture) to a served sidecar jpg via
+/// ffmpeg, returning its relative path. Returns None when the file has no art, ffmpeg is
+/// missing, or extraction fails (best-effort: a track without art just gets no cover).
+fn extract_cover(full: &Path, root: &Path, rel_url: &str) -> Option<String> {
+    let rel = cover_sidecar_name(rel_url);
+    let out = root.join(&rel);
+    if let Some(parent) = out.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let status = Command::new("ffmpeg")
+        .args(["-y", "-v", "error", "-i"])
+        .arg(full)
+        .args(["-an", "-frames:v", "1"])
+        .arg(&out)
+        .status();
+    let ok = matches!(status, Ok(s) if s.success())
+        && out.metadata().map(|m| m.len() > 0).unwrap_or(false);
+    if ok {
+        Some(rel)
+    } else {
+        let _ = fs::remove_file(&out);
+        None
     }
 }
 
@@ -182,6 +228,8 @@ fn build_tracks(root: &Path) -> Vec<Track> {
             .unwrap_or_else(|| full.file_stem().and_then(|s| s.to_str()).unwrap_or("track").to_string());
         let composer = first_nonempty(&[tags.get("composer")]);
         let media_kind = if VIDEO_EXTS.contains(&ext.as_str()) { "video" } else { "audio" }.to_string();
+        // Read embedded art (audio only; a video's "cover" is the video itself).
+        let cover = if media_kind == "audio" { extract_cover(full, root, &rel_url) } else { None };
 
         base.push(Track {
             title,
@@ -194,6 +242,7 @@ fn build_tracks(root: &Path) -> Vec<Track> {
             composer,
             release_kind: None,
             featured: false,
+            cover,
         });
     }
 
@@ -591,7 +640,20 @@ mod tests {
         let clip = tracks.iter().find(|t| t.filename == "PersonaA/AlbumX/clip.mp4").unwrap();
         assert_eq!(clip.media_kind, "video", "mp4 detected as video");
 
+        // Dummy files carry no embedded art, so extraction is a clean no-op (best-effort None).
+        assert!(direct.cover.is_none(), "no embedded art -> no cover, no crash");
+
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn cover_sidecar_name_safe_and_deterministic() {
+        let n = cover_sidecar_name("Styrling Shadow/Fallen Brother.mp3");
+        assert_eq!(n, ".cerberus-covers/styrling_shadow_fallen_brother.jpg");
+        // Stable across calls, and always inside the covers dir with a .jpg extension.
+        assert_eq!(n, cover_sidecar_name("Styrling Shadow/Fallen Brother.mp3"));
+        assert!(cover_sidecar_name("weird/../name!.flac").starts_with(".cerberus-covers/"));
+        assert!(cover_sidecar_name("x.mp3").ends_with(".jpg"));
     }
 }
 
