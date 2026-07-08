@@ -362,6 +362,22 @@ fn write_tags(music_dir: String, edits: Vec<TagEdit>) -> Result<u32, String> {
     Ok(written)
 }
 
+/// Publish the current on-disk catalog to the artist's dossier: re-scan the folder (so what's served
+/// matches the saved tags exactly) and register it. Named-mode, so the platform derives the liveness
+/// marker from the provisioned media origin. Returns the number of tracks published.
+#[tauri::command]
+fn serve_catalog(music_dir: String, agent_key: String, platform_url: String) -> Result<usize, String> {
+    let root = PathBuf::from(&music_dir);
+    if !root.is_dir() {
+        return Err("Music folder not found".into());
+    }
+    let tracks = build_tracks(&root);
+    if tracks.is_empty() {
+        return Err("No tracks to serve".into());
+    }
+    post_register(&platform_url, &agent_key, &tracks, json!({ "named": true }))
+}
+
 fn parse_range(h: &str) -> Option<(u64, u64)> {
     let s = h.strip_prefix("bytes=")?;
     let mut parts = s.split('-');
@@ -781,6 +797,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             scan_folder,
             write_tags,
+            serve_catalog,
             start_agent,
             stop_agent,
             agent_status,

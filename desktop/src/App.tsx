@@ -246,7 +246,15 @@ export default function App() {
   const live = status?.running;
 
   if (showEditor && config) {
-    return <Editor musicDir={musicDir} artistName={config.slug} onExit={() => setShowEditor(false)} />;
+    return (
+      <Editor
+        musicDir={musicDir}
+        artistName={config.slug}
+        agentKey={config.agentKey}
+        platformUrl={config.platformUrl}
+        onExit={() => setShowEditor(false)}
+      />
+    );
   }
 
   return (

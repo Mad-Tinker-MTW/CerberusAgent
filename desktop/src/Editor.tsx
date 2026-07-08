@@ -27,7 +27,19 @@ type Draft = Partial<Pick<EditorTrack, "title" | "persona" | "release" | "releas
 const IN_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 const KINDS = ["album", "ep", "single"] as const;
 
-export function Editor({ musicDir, artistName, onExit }: { musicDir: string; artistName: string; onExit: () => void }) {
+export function Editor({
+  musicDir,
+  artistName,
+  agentKey,
+  platformUrl,
+  onExit,
+}: {
+  musicDir: string;
+  artistName: string;
+  agentKey: string;
+  platformUrl: string;
+  onExit: () => void;
+}) {
   const [tracks, setTracks] = useState<EditorTrack[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [selected, setSelected] = useState<string | null>(null);
@@ -92,6 +104,29 @@ export function Editor({ musicDir, artistName, onExit }: { musicDir: string; art
     }
   }
 
+  // Publish the saved catalog to the dossier. Requires no unsaved edits, so what publishes matches
+  // the files on disk (Serve re-scans server-side).
+  async function serveCatalog() {
+    if (dirty) {
+      setSaveMsg("Save your tag edits first, then serve.");
+      return;
+    }
+    const releaseCount = groups.reduce((n, g) => n + g.releases.length, 0);
+    if (!IN_TAURI) {
+      setSaveMsg(`Preview mode: would publish ${releaseCount} release${releaseCount === 1 ? "" : "s"} to your dossier.`);
+      return;
+    }
+    setError("");
+    setSaveMsg("Publishing…");
+    try {
+      const n = await invoke<number>("serve_catalog", { musicDir, agentKey, platformUrl });
+      setSaveMsg(`Published ${n} track${n === 1 ? "" : "s"} to your dossier.`);
+    } catch (e) {
+      setError(String(e));
+      setSaveMsg("");
+    }
+  }
+
   // Group the effective tracks into release cards, split by type for the Serve preview.
   const groups = useMemo(() => buildGroups(tracks.map((t) => eff(t.filename)), artistName), [effective, tracks, artistName]);
   const dirty = Object.keys(drafts).length > 0;
@@ -106,7 +141,7 @@ export function Editor({ musicDir, artistName, onExit }: { musicDir: string; art
           <button className="btn ghost sm" disabled={!dirty} onClick={saveTags} title="Write the edited tags back into your files">
             Save tags
           </button>
-          <button className="btn go sm" disabled title="Publishes the ready releases to your dossier (coming next)">
+          <button className="btn go sm" onClick={serveCatalog} disabled={loading || tracks.length === 0} title="Publish the saved catalog to your dossier">
             Serve
           </button>
         </div>
