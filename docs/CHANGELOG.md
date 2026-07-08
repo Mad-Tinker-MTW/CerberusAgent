@@ -10,6 +10,13 @@
   still there for a file elsewhere.
 - Enabled the Tauri asset protocol so the picker shows real cover thumbnails.
 
+### Release
+- **First installer that carries the editor.** v0.4.0 through v0.7.0 shipped to `main` untagged, so
+  the download route still served v0.4.0 (pre-editor). Tagged v0.8.0 (CI-built NSIS installer) and
+  synced `tauri.conf.json` to 0.8.0. `release.yml` now also uploads the installer to R2
+  (`cerberus-images/installers/...-latest`) so `cerberuslive.studio/api/agent/installer` always serves
+  the newest build (needs the CF repo secrets; first upload done manually). (cerberuslive L-058)
+
 ## [0.7.0] — 2026-07-08
 
 The editor gains its publish action, cover art, and group-version credits. (cerberuslive L-057b)
