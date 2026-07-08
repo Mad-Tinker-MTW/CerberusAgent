@@ -52,6 +52,11 @@ struct Track {
     // Relative path to the embedded cover art extracted to a served sidecar, or None when the
     // file carries no art. The register route turns this into a gateway URL.
     cover: Option<String>,
+    // Group "versions" release fields: the genre/version label and the member who performed it.
+    // Read from the file's subtitle + performer tags (lofty), not the ffprobe standard set.
+    #[serde(rename = "versionLabel")]
+    version_label: Option<String>,
+    performer: Option<String>,
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -172,6 +177,14 @@ fn probe_meta(path: &Path) -> (Option<String>, HashMap<String, String>) {
     (duration, tags)
 }
 
+/// Read the version subtitle (group "versions" releases), which our ffprobe pass doesn't cover.
+/// Best-effort via lofty. The performer is derived from the artist/album_artist split in the scan.
+fn read_version_label(path: &Path) -> Option<String> {
+    let tagged = lofty::read_from_path(path).ok()?;
+    let tag = tagged.primary_tag().or_else(|| tagged.first_tag())?;
+    tag.get_string(&ItemKey::TrackSubtitle).map(|s| s.to_string())
+}
+
 /// Recursively collect media files under `dir`.
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     if let Ok(rd) = fs::read_dir(dir) {
@@ -232,8 +245,16 @@ fn build_tracks(root: &Path) -> Vec<Track> {
             .unwrap_or_else(|| full.file_stem().and_then(|s| s.to_str()).unwrap_or("track").to_string());
         let composer = first_nonempty(&[tags.get("composer")]);
         let media_kind = if VIDEO_EXTS.contains(&ext.as_str()) { "video" } else { "audio" }.to_string();
-        // Read embedded art (audio only; a video's "cover" is the video itself).
+        // Read embedded art + the version/performer fields (audio only).
         let cover = if media_kind == "audio" { extract_cover(full, root, &rel_url) } else { None };
+        let version_label = if media_kind == "audio" { read_version_label(full) } else { None };
+        // Performer = the track artist (TPE1) when it differs from the act (album_artist / TPE2), the
+        // group-version case (album_artist = KWC, artist = the member). Otherwise there's no separate
+        // performer credit to surface.
+        let performer = match (tags.get("album_artist"), tags.get("artist")) {
+            (Some(act), Some(art)) if act != art => Some(art.clone()),
+            _ => None,
+        };
 
         base.push(Track {
             title,
@@ -247,6 +268,8 @@ fn build_tracks(root: &Path) -> Vec<Track> {
             release_kind: None,
             featured: false,
             cover,
+            version_label,
+            performer,
         });
     }
 
@@ -296,6 +319,9 @@ struct TagEdit {
     #[serde(rename = "trackNo")]
     track_no: Option<u32>,
     composer: Option<String>,
+    #[serde(rename = "versionLabel")]
+    version_label: Option<String>,
+    performer: Option<String>,
 }
 
 fn nonempty(o: &Option<String>) -> Option<String> {
@@ -315,11 +341,16 @@ fn write_one_tag(path: &Path, e: &TagEdit) -> Result<(), String> {
     if let Some(v) = nonempty(&e.title) {
         tag.set_title(v);
     }
-    if let Some(v) = nonempty(&e.persona) {
-        // Both, so the scan's album_artist->artist->folder priority resolves to this voice and any
-        // leaked original artist tag (e.g. "frankydlp") is overwritten.
-        tag.set_artist(v.clone());
-        tag.insert_text(ItemKey::AlbumArtist, v);
+    // Standard TPE2/TPE1 convention: album_artist = the act/persona (the scan reads persona from
+    // it first, overwriting any leaked "frankydlp"); artist = the specific performer of this track
+    // when given (group-version case), else the persona itself.
+    let persona = nonempty(&e.persona);
+    let performer = nonempty(&e.performer);
+    if let Some(p) = &persona {
+        tag.insert_text(ItemKey::AlbumArtist, p.clone());
+        tag.set_artist(performer.clone().unwrap_or_else(|| p.clone()));
+    } else if let Some(pf) = &performer {
+        tag.set_artist(pf.clone());
     }
     if let Some(v) = nonempty(&e.release) {
         tag.set_album(v);
@@ -331,6 +362,9 @@ fn write_one_tag(path: &Path, e: &TagEdit) -> Result<(), String> {
     }
     if let Some(v) = nonempty(&e.composer) {
         tag.insert_text(ItemKey::Composer, v);
+    }
+    if let Some(v) = nonempty(&e.version_label) {
+        tag.insert_text(ItemKey::TrackSubtitle, v);
     }
     tag.save_to_path(path, WriteOptions::default())
         .map_err(|err| format!("write {}: {err}", path.display()))?;
@@ -814,21 +848,26 @@ mod tests {
         }
         let edit = TagEdit {
             filename: "song.mp3".into(),
-            title: Some("Fallen Brother".into()),
-            persona: Some("Styrling Shadow".into()),
-            release: Some("A Soldier's Ghost".into()),
-            track_no: Some(3),
+            title: Some("Highway con Sexy".into()),
+            persona: Some("Kings Without Crowns".into()),
+            release: Some("Highway con Sexy".into()),
+            track_no: Some(1),
             composer: Some("Francisco De La Paz".into()),
+            version_label: Some("Reggaeton".into()),
+            performer: Some("El Rey".into()),
         };
         write_one_tag(&f, &edit).unwrap();
 
-        // Re-read straight from the file and confirm the tags stuck.
+        // Re-read straight from the file and confirm the tags stuck, including version + performer.
         let tagged = lofty::read_from_path(&f).unwrap();
         let tag = tagged.primary_tag().or_else(|| tagged.first_tag()).unwrap();
-        assert_eq!(tag.title().as_deref(), Some("Fallen Brother"));
-        assert_eq!(tag.album().as_deref(), Some("A Soldier's Ghost"));
-        assert_eq!(tag.track(), Some(3));
-        assert_eq!(tag.get_string(&ItemKey::AlbumArtist), Some("Styrling Shadow"));
+        assert_eq!(tag.title().as_deref(), Some("Highway con Sexy"));
+        assert_eq!(tag.album().as_deref(), Some("Highway con Sexy"));
+        assert_eq!(tag.track(), Some(1));
+        // album_artist = the act; artist = the version's performer; subtitle = the version.
+        assert_eq!(tag.get_string(&ItemKey::AlbumArtist), Some("Kings Without Crowns"));
+        assert_eq!(tag.artist().as_deref(), Some("El Rey"));
+        assert_eq!(tag.get_string(&ItemKey::TrackSubtitle), Some("Reggaeton"));
         let _ = fs::remove_dir_all(&tmp);
     }
 

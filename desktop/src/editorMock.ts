@@ -11,8 +11,8 @@ export const MOCK_LIBRARY: EditorTrack[] = [
   t("Without Confession", "Bianca Ravina/Without Confession/01 Without Confession.mp3", "Bianca Ravina", "Without Confession", "ep", 1),
   t("Velvet Communion", "Bianca Ravina/Without Confession/02 Velvet Communion.mp3", "Bianca Ravina", "Without Confession", "ep", 2),
   // Kings Without Crowns — Highway con Sexy (EP, group versions)
-  t("Highway con Sexy — Country", "Kings without Crowns/Highway con Sexy/Country.mp3", "Kings Without Crowns", "Highway con Sexy", "ep", 1),
-  t("Highway con Sexy — Reggaeton", "Kings without Crowns/Highway con Sexy/Reggaeton.mp3", "Kings Without Crowns", "Highway con Sexy", "ep", 2),
+  ver("Highway con Sexy — Country", "Kings without Crowns/Highway con Sexy/Country.mp3", "Kings Without Crowns", "Highway con Sexy", 1, "Country", "El Vaquero"),
+  ver("Highway con Sexy — Reggaeton", "Kings without Crowns/Highway con Sexy/Reggaeton.mp3", "Kings Without Crowns", "Highway con Sexy", 2, "Reggaeton", "El Rey"),
   // A misfiled track: artist tag leaked, no release -> lands as a loose single needing work
   t("Codebreaker Queen", "Singles/Codebreaker Queen.mp3", null, null, null, null),
 ];
@@ -37,5 +37,20 @@ function t(
     mediaKind: "audio",
     featured: false,
     cover: null,
+    versionLabel: null,
+    performer: null,
   };
+}
+
+// A group-version track: an EP track that also carries a version label + performer.
+function ver(
+  title: string,
+  filename: string,
+  persona: string,
+  release: string,
+  trackNo: number,
+  versionLabel: string,
+  performer: string
+): EditorTrack {
+  return { ...t(title, filename, persona, release, "ep", trackNo), versionLabel, performer };
 }

@@ -20,10 +20,14 @@ export type EditorTrack = {
   mediaKind: string; // audio | video
   featured: boolean;
   cover: string | null;
+  versionLabel: string | null; // group "versions" release: the genre/version of this track
+  performer: string | null; // which group member performed this version
 };
 
 // The subset the Prep panel edits; merged over the scanned track to form the effective view.
-type Draft = Partial<Pick<EditorTrack, "title" | "persona" | "release" | "releaseKind" | "trackNo" | "composer">>;
+type Draft = Partial<
+  Pick<EditorTrack, "title" | "persona" | "release" | "releaseKind" | "trackNo" | "composer" | "versionLabel" | "performer">
+>;
 
 const IN_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 const KINDS = ["album", "ep", "single"] as const;
@@ -86,7 +90,7 @@ export function Editor({
       .filter((t) => drafts[t.filename])
       .map((t) => {
         const e = eff(t.filename);
-        return { filename: t.filename, title: e.title, persona: e.persona, release: e.release, trackNo: e.trackNo, composer: e.composer };
+        return { filename: t.filename, title: e.title, persona: e.persona, release: e.release, trackNo: e.trackNo, composer: e.composer, versionLabel: e.versionLabel, performer: e.performer };
       });
     if (!edits.length) return;
     if (!IN_TAURI) {
@@ -236,6 +240,10 @@ export function Editor({
                 <Field label="AI-assisted" hint="a voice persona = AI-assisted"><input value={sel.persona ? "Yes" : "No"} readOnly /></Field>
               </div>
               <Field label="Composer / contributing"><input value={sel.composer ?? ""} placeholder={artistName} onChange={(e) => patch("composer", e.target.value || null)} /></Field>
+              <div className="ed-row2">
+                <Field label="Version" hint="group release"><input value={sel.versionLabel ?? ""} placeholder="e.g. Reggaeton" onChange={(e) => patch("versionLabel", e.target.value || null)} /></Field>
+                <Field label="Performer" hint="which member"><input value={sel.performer ?? ""} placeholder="member" onChange={(e) => patch("performer", e.target.value || null)} /></Field>
+              </div>
             </div>
           )}
         </section>

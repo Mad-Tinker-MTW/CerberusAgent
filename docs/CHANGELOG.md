@@ -1,5 +1,21 @@
 # Changelog — Cerberus Agent
 
+## [0.7.0] — 2026-07-08
+
+The editor gains its publish action, cover art, and group-version credits. (cerberuslive L-057b)
+
+### Added
+- **Serve** — publishes the saved catalog to the dossier: re-scans the folder (so what's served
+  matches the tags on disk) and registers it (`serve_catalog`). Guarded so you must Save tag edits
+  before publishing.
+- **Cover art picker** — the Prep cover slot is now a picker (`set_cover`) that embeds a chosen image
+  into the file(s) via `lofty`; applied to a whole release or a single. The existing extract-cover
+  path then serves it. jpg / png / gif.
+- **Version and Performer fields** for group "versions" releases. These map to the standard tag
+  convention: `album_artist` is the act (e.g. Kings Without Crowns), `artist` is the member who
+  performed that version, and the version label rides the subtitle tag. The scan reads them back, so
+  they round-trip.
+
 ## [0.6.0] — 2026-07-08
 
 The Agent gains a discography editor: fix how your library files, then serve it. (cerberuslive L-057)
