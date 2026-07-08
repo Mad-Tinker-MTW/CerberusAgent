@@ -68,9 +68,13 @@
 .ed-form { display: flex; flex-direction: column; gap: 10px; }
 .cover-drop {
   aspect-ratio: 1; border: 1px dashed var(--border); border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--muted); font-size: 12px;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  color: var(--muted); font-size: 12px; width: 100%;
+  background: var(--panel-soft); cursor: pointer; transition: border-color 0.12s, color 0.12s;
 }
+.cover-drop:hover { border-color: var(--red); color: var(--text); }
+.cover-set { color: var(--green); line-height: 1.6; }
+.cover-check { font-weight: 700; }
 .ed-field { display: flex; flex-direction: column; gap: 4px; }
 .ed-field > span { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); }
 .ed-field em { text-transform: none; letter-spacing: 0; font-style: normal; color: var(--muted); }

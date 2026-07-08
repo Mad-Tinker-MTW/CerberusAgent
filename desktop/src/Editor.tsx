@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { MOCK_LIBRARY } from "./editorMock";
 import "./Editor.css";
 
@@ -104,6 +105,32 @@ export function Editor({
     }
   }
 
+  // Pick an image and embed it as the cover. Applied to the whole release (its tracks share one
+  // cover); for a loose single, just that track.
+  async function pickCover() {
+    if (!sel || !selected) return;
+    if (!IN_TAURI) {
+      setSaveMsg("Preview mode: the cover picker opens a file dialog in the app.");
+      return;
+    }
+    const img = await openDialog({ title: "Pick cover art", filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "gif"] }] });
+    if (typeof img !== "string") return;
+    const mates = sel.release
+      ? tracks.filter((t) => { const e = eff(t.filename); return e.release === sel.release && e.persona === sel.persona; }).map((t) => t.filename)
+      : [selected];
+    setError("");
+    setSaveMsg("Setting cover…");
+    try {
+      const n = await invoke<number>("set_cover", { musicDir, filenames: mates, imagePath: img });
+      const rows = await invoke<EditorTrack[]>("scan_folder", { path: musicDir });
+      setTracks(rows);
+      setSaveMsg(`Cover set on ${n} track${n === 1 ? "" : "s"}.`);
+    } catch (e) {
+      setError(String(e));
+      setSaveMsg("");
+    }
+  }
+
   // Publish the saved catalog to the dossier. Requires no unsaved edits, so what publishes matches
   // the files on disk (Serve re-scans server-side).
   async function serveCatalog() {
@@ -184,7 +211,13 @@ export function Editor({
             <p className="muted pad">Pick a track.</p>
           ) : (
             <div className="ed-form">
-              <div className="cover-drop">{sel.cover ? "cover set" : "no cover"}</div>
+              <button type="button" className="cover-drop" onClick={pickCover} title="Pick cover art">
+                {sel.cover ? (
+                  <span className="cover-set"><span className="cover-check">✓</span> cover set{sel.release ? " · release" : ""}<br /><span className="muted sm">change</span></span>
+                ) : (
+                  <span>+ add cover art{sel.release ? <><br /><span className="muted sm">whole release</span></> : null}</span>
+                )}
+              </button>
               <Field label="Title"><input value={sel.title} onChange={(e) => patch("title", e.target.value)} /></Field>
               <Field label="Voice / artist" hint={sel.persona ? "AI voice" : "empty = your own voice (direct)"}>
                 <input value={sel.persona ?? ""} placeholder={artistName} onChange={(e) => patch("persona", e.target.value || null)} />

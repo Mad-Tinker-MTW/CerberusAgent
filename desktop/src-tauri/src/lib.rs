@@ -23,6 +23,7 @@ use std::thread;
 use std::time::Duration;
 
 use lofty::config::WriteOptions;
+use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::*;
 use lofty::tag::Tag;
 use notify::{RecursiveMode, Watcher};
@@ -360,6 +361,60 @@ fn write_tags(music_dir: String, edits: Vec<TagEdit>) -> Result<u32, String> {
         return Err(first_err.unwrap_or_else(|| "nothing to write".into()));
     }
     Ok(written)
+}
+
+fn mime_from_ext(path: &Path) -> Option<MimeType> {
+    match ext_of(path).as_str() {
+        "jpg" | "jpeg" => Some(MimeType::Jpeg),
+        "png" => Some(MimeType::Png),
+        "gif" => Some(MimeType::Gif),
+        _ => None,
+    }
+}
+
+/// Embed an image as a file's front-cover art via lofty. Making the art part of the file (rather
+/// than a loose sidecar) keeps it portable and lets the existing extract-cover path serve it.
+fn embed_cover(path: &Path, mime: MimeType, data: Vec<u8>) -> Result<(), String> {
+    let mut tagged = lofty::read_from_path(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    if tagged.primary_tag_mut().is_none() {
+        let tt = tagged.primary_tag_type();
+        tagged.insert_tag(Tag::new(tt));
+    }
+    let tag = tagged.primary_tag_mut().ok_or("no writable tag")?;
+    let pic = Picture::new_unchecked(PictureType::CoverFront, Some(mime), None, data);
+    tag.set_picture(0, pic);
+    tag.save_to_path(path, WriteOptions::default())
+        .map_err(|e| format!("write {}: {e}", path.display()))?;
+    Ok(())
+}
+
+/// Set the cover art on one or more tracks (a release's tracks, or a single). The image is embedded
+/// into each file; a re-scan then extracts it through the normal cover pipeline.
+#[tauri::command]
+fn set_cover(music_dir: String, filenames: Vec<String>, image_path: String) -> Result<u32, String> {
+    let root = PathBuf::from(&music_dir);
+    let img = PathBuf::from(&image_path);
+    let mime = mime_from_ext(&img).ok_or("Cover must be a jpg, png, or gif")?;
+    let data = fs::read(&img).map_err(|e| format!("read image: {e}"))?;
+    let mut n = 0u32;
+    let mut first_err: Option<String> = None;
+    for f in &filenames {
+        let p = root.join(f);
+        if !p.starts_with(&root) || !p.is_file() {
+            first_err.get_or_insert_with(|| format!("skipped {f}"));
+            continue;
+        }
+        match embed_cover(&p, mime.clone(), data.clone()) {
+            Ok(()) => n += 1,
+            Err(e) => {
+                first_err.get_or_insert(e);
+            }
+        }
+    }
+    if n == 0 {
+        return Err(first_err.unwrap_or_else(|| "no files".into()));
+    }
+    Ok(n)
 }
 
 /// Publish the current on-disk catalog to the artist's dossier: re-scan the folder (so what's served
@@ -778,6 +833,34 @@ mod tests {
     }
 
     #[test]
+    fn set_cover_embeds_picture() {
+        let tmp = std::env::temp_dir().join("cerb_cover_test");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let mp3 = tmp.join("song.mp3");
+        let jpg = tmp.join("art.jpg");
+        let mk_mp3 = Command::new("ffmpeg")
+            .args(["-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1"])
+            .arg(&mp3)
+            .status();
+        let mk_jpg = Command::new("ffmpeg")
+            .args(["-y", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=64x64:d=1", "-frames:v", "1"])
+            .arg(&jpg)
+            .status();
+        let ok = mk_mp3.map(|s| s.success()).unwrap_or(false) && mk_jpg.map(|s| s.success()).unwrap_or(false);
+        if !ok {
+            eprintln!("ffmpeg unavailable; skipping set_cover_embeds_picture");
+            return;
+        }
+        let data = fs::read(&jpg).unwrap();
+        embed_cover(&mp3, MimeType::Jpeg, data).unwrap();
+        let tagged = lofty::read_from_path(&mp3).unwrap();
+        let tag = tagged.primary_tag().or_else(|| tagged.first_tag()).unwrap();
+        assert!(!tag.pictures().is_empty(), "front cover embedded");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn cover_sidecar_name_safe_and_deterministic() {
         let n = cover_sidecar_name("Styrling Shadow/Fallen Brother.mp3");
         assert_eq!(n, ".cerberus-covers/styrling_shadow_fallen_brother.jpg");
@@ -797,6 +880,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             scan_folder,
             write_tags,
+            set_cover,
             serve_catalog,
             start_agent,
             stop_agent,
