@@ -1,6 +1,6 @@
 [package]
 name = "desktop"
-version = "0.5.0"
+version = "0.6.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -27,4 +27,5 @@ tiny_http = "0.12"
 ureq = { version = "2", features = ["json"] }
 urlencoding = "2"
 notify = "6"
+lofty = "0.21"
 

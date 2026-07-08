@@ -1,5 +1,21 @@
 # Changelog — Cerberus Agent
 
+## [0.6.0] — 2026-07-08
+
+The Agent gains a discography editor: fix how your library files, then serve it. (cerberuslive L-057)
+
+### Added
+- **Organize library** — a 3-panel editor reachable from setup. Library lists the scanned tracks
+  (with a "needs a voice" flag for misfiled ones), Prep edits a track's fields (title, voice/artist,
+  release, type, track #, composer, and a derived AI-assisted readout), and Ready-to-serve previews
+  the result grouped into Albums / EPs / Singles.
+- **Save tags** — writes the edits back into the file tags via `lofty` (`write_tags`): voice ->
+  `album_artist` + `artist`, release -> album, plus title / track # / composer. The file becomes the
+  source of truth, so a re-scan reads the corrected persona and release straight from the tags. This
+  is the fix for a misfiled track (e.g. one that scanned as `frankydlp` with no release).
+- Dev-preview affordance: outside Tauri the UI falls back to sample data, so the whole frontend can
+  be previewed in a browser without the backend.
+
 ## [0.5.0] — 2026-07-08
 
 ### Added

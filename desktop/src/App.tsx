@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { Editor } from "./Editor";
 import "./App.css";
 
 type Track = { title: string; filename: string; duration: string | null; featured: boolean };
@@ -39,6 +40,10 @@ type PollResp =
 
 const DEFAULT_PLATFORM = "https://cerberuslive.studio";
 
+// True only inside the Tauri app. In a plain browser (dev preview) the Rust `invoke` backend is
+// absent, so the UI falls back to sample data — lets the whole frontend be previewed without Tauri.
+const IN_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
 export default function App() {
   // 'loading' -> we're checking APPDATA for stored config
   // 'device'  -> no config, running the device-authorization flow
@@ -58,6 +63,7 @@ export default function App() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [ack, setAck] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
 
   const pollTimer = useRef<number | null>(null);
   const grantExpiresAt = useRef<number | null>(null);
@@ -149,6 +155,14 @@ export default function App() {
   // Boot: load config if it exists, else start device flow.
   useEffect(() => {
     (async () => {
+      // Browser dev-preview: no Tauri backend, so land in setup with a sample config.
+      if (!IN_TAURI) {
+        const mock: AgentConfig = { slug: "mad-tinker", agentKey: "", tunnelToken: "", mediaOrigin: "", platformUrl: DEFAULT_PLATFORM, musicDir: "X:\\Music" };
+        setConfig(mock);
+        setMusicDir(mock.musicDir);
+        setPhase("setup");
+        return;
+      }
       try {
         const cfg = (await invoke("load_config")) as AgentConfig | null;
         if (cfg && cfg.slug && cfg.agentKey) {
@@ -230,6 +244,10 @@ export default function App() {
   }
 
   const live = status?.running;
+
+  if (showEditor && config) {
+    return <Editor musicDir={musicDir} artistName={config.slug} onExit={() => setShowEditor(false)} />;
+  }
 
   return (
     <main className="wrap">
@@ -337,6 +355,15 @@ export default function App() {
               <button className="btn go" onClick={goLive} disabled={busy}>{busy ? "Starting..." : "Go live"}</button>
             </>
           )}
+
+          <button
+            className="btn ghost"
+            style={{ marginTop: 8 }}
+            onClick={() => setShowEditor(true)}
+            disabled={busy}
+          >
+            Organize library
+          </button>
 
           <button
             className="btn ghost"

@@ -22,6 +22,9 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use lofty::config::WriteOptions;
+use lofty::prelude::*;
+use lofty::tag::Tag;
 use notify::{RecursiveMode, Watcher};
 use serde::Serialize;
 use serde_json::json;
@@ -280,6 +283,83 @@ fn scan_folder(path: String) -> Result<Vec<Track>, String> {
         return Err("No audio/video files in that folder".into());
     }
     Ok(tracks)
+}
+
+// One track's edited fields from the Prep panel. Empty/None fields are left untouched on disk.
+#[derive(serde::Deserialize)]
+struct TagEdit {
+    filename: String, // relative path with forward slashes, as returned by the scan
+    title: Option<String>,
+    persona: Option<String>, // -> album_artist (+ artist), so the scan seats it under this voice
+    release: Option<String>, // -> album
+    #[serde(rename = "trackNo")]
+    track_no: Option<u32>,
+    composer: Option<String>,
+}
+
+fn nonempty(o: &Option<String>) -> Option<String> {
+    o.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+/// Write one track's edited fields into its file tags via lofty. This is the Mp3tag-style
+/// write-back: it makes the file itself the source of truth (portable, DistroKid-ready) so a
+/// re-scan reads the corrected persona/release straight from the tags.
+fn write_one_tag(path: &Path, e: &TagEdit) -> Result<(), String> {
+    let mut tagged = lofty::read_from_path(path).map_err(|err| format!("read {}: {err}", path.display()))?;
+    if tagged.primary_tag_mut().is_none() {
+        let tt = tagged.primary_tag_type();
+        tagged.insert_tag(Tag::new(tt));
+    }
+    let tag = tagged.primary_tag_mut().ok_or("no writable tag")?;
+    if let Some(v) = nonempty(&e.title) {
+        tag.set_title(v);
+    }
+    if let Some(v) = nonempty(&e.persona) {
+        // Both, so the scan's album_artist->artist->folder priority resolves to this voice and any
+        // leaked original artist tag (e.g. "frankydlp") is overwritten.
+        tag.set_artist(v.clone());
+        tag.insert_text(ItemKey::AlbumArtist, v);
+    }
+    if let Some(v) = nonempty(&e.release) {
+        tag.set_album(v);
+    }
+    if let Some(n) = e.track_no {
+        if n > 0 {
+            tag.set_track(n);
+        }
+    }
+    if let Some(v) = nonempty(&e.composer) {
+        tag.insert_text(ItemKey::Composer, v);
+    }
+    tag.save_to_path(path, WriteOptions::default())
+        .map_err(|err| format!("write {}: {err}", path.display()))?;
+    Ok(())
+}
+
+/// Write the Prep panel's edits back into the files under `music_dir`. Continues past a failed file
+/// and reports how many were written; only errors when nothing could be written.
+#[tauri::command]
+fn write_tags(music_dir: String, edits: Vec<TagEdit>) -> Result<u32, String> {
+    let root = PathBuf::from(&music_dir);
+    let mut written = 0u32;
+    let mut first_err: Option<String> = None;
+    for e in &edits {
+        let path = root.join(&e.filename);
+        if !path.starts_with(&root) || !path.is_file() {
+            first_err.get_or_insert_with(|| format!("skipped {}", e.filename));
+            continue;
+        }
+        match write_one_tag(&path, e) {
+            Ok(()) => written += 1,
+            Err(msg) => {
+                first_err.get_or_insert(msg);
+            }
+        }
+    }
+    if written == 0 {
+        return Err(first_err.unwrap_or_else(|| "nothing to write".into()));
+    }
+    Ok(written)
 }
 
 fn parse_range(h: &str) -> Option<(u64, u64)> {
@@ -647,6 +727,41 @@ mod tests {
     }
 
     #[test]
+    fn write_tags_roundtrip() {
+        let tmp = std::env::temp_dir().join("cerb_write_test");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let f = tmp.join("song.mp3");
+        // Generate a real 1s mp3 so lofty has a valid container to tag.
+        let made = Command::new("ffmpeg")
+            .args(["-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1"])
+            .arg(&f)
+            .status();
+        if made.map(|s| !s.success()).unwrap_or(true) {
+            eprintln!("ffmpeg unavailable; skipping write_tags_roundtrip");
+            return;
+        }
+        let edit = TagEdit {
+            filename: "song.mp3".into(),
+            title: Some("Fallen Brother".into()),
+            persona: Some("Styrling Shadow".into()),
+            release: Some("A Soldier's Ghost".into()),
+            track_no: Some(3),
+            composer: Some("Francisco De La Paz".into()),
+        };
+        write_one_tag(&f, &edit).unwrap();
+
+        // Re-read straight from the file and confirm the tags stuck.
+        let tagged = lofty::read_from_path(&f).unwrap();
+        let tag = tagged.primary_tag().or_else(|| tagged.first_tag()).unwrap();
+        assert_eq!(tag.title().as_deref(), Some("Fallen Brother"));
+        assert_eq!(tag.album().as_deref(), Some("A Soldier's Ghost"));
+        assert_eq!(tag.track(), Some(3));
+        assert_eq!(tag.get_string(&ItemKey::AlbumArtist), Some("Styrling Shadow"));
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn cover_sidecar_name_safe_and_deterministic() {
         let n = cover_sidecar_name("Styrling Shadow/Fallen Brother.mp3");
         assert_eq!(n, ".cerberus-covers/styrling_shadow_fallen_brother.jpg");
@@ -665,6 +780,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             scan_folder,
+            write_tags,
             start_agent,
             stop_agent,
             agent_status,
