@@ -47,7 +47,32 @@ jobs:
             Cerberus Agent — self-host your media from your own PC.
 
             1. Download and run the installer below.
-            2. Sign in at cerberuslive.studio, go to /account, and copy your agent key + streaming token.
-            3. Browse to your music folder, paste the key + token, and go live.
+            2. Sign in at cerberuslive.studio, go to /account, and link this agent (no key to paste).
+            3. Browse to your music folder, organize your library, and go live.
           releaseDraft: false
           prerelease: false
+
+      # Publish the freshly-built installer to R2 as the "latest" key that the site's
+      # /api/agent/installer download route serves, so /account's "Download for Windows"
+      # button always hands out this build. Needs CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID
+      # repo secrets; skips cleanly (without failing the release) if they aren't set.
+      - name: Publish installer to R2 (download route)
+        shell: bash
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID not set — skipping R2 upload."
+            echo "Add them as repo secrets so future releases auto-publish to the download route."
+            exit 0
+          fi
+          exe=$(find desktop/src-tauri/target -path '*bundle/nsis/*-setup.exe' | head -1)
+          if [ -z "$exe" ]; then echo "No NSIS installer found under bundle/nsis"; exit 1; fi
+          echo "Uploading $exe to R2 as the latest installer"
+          bunx wrangler@4 r2 object put \
+            "cerberus-images/installers/cerberus-agent-latest-x64-setup.exe" \
+            --file="$exe" \
+            --content-type "application/vnd.microsoft.portable-executable" \
+            --remote
