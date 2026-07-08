@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { MOCK_LIBRARY } from "./editorMock";
+import { MOCK_LIBRARY, MOCK_COVERS } from "./editorMock";
 import "./Editor.css";
+
+export type CoverOption = { name: string; path: string };
+
+/** Slug for title <-> cover-filename matching (e.g. "A Soldier's Ghost" -> "a-soldiers-ghost").
+ *  Apostrophes are dropped (not treated as separators) so "Soldier's" matches a "soldiers" file. */
+function coverSlug(s: string): string {
+  return s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
 
 // The 3-panel prep editor: Library (scanned tracks) -> Prep (edit tags + art) -> Serve (grouped
 // preview of what will publish). Slice 1: read the real scan, edit into an in-memory draft, and
@@ -51,6 +59,8 @@ export function Editor({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
+  const [covers, setCovers] = useState<CoverOption[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -62,6 +72,11 @@ export function Editor({
       } catch (e) {
         setError(String(e));
         setTracks([]);
+      }
+      try {
+        setCovers(IN_TAURI ? await invoke<CoverOption[]>("list_covers", { musicDir }) : MOCK_COVERS);
+      } catch {
+        setCovers([]);
       }
       setLoading(false);
     })();
@@ -109,23 +124,25 @@ export function Editor({
     }
   }
 
-  // Pick an image and embed it as the cover. Applied to the whole release (its tracks share one
-  // cover); for a loose single, just that track.
-  async function pickCover() {
-    if (!sel || !selected) return;
-    if (!IN_TAURI) {
-      setSaveMsg("Preview mode: the cover picker opens a file dialog in the app.");
-      return;
-    }
-    const img = await openDialog({ title: "Pick cover art", filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "gif"] }] });
-    if (typeof img !== "string") return;
-    const mates = sel.release
+  // The tracks a cover applies to: a whole release shares one cover; a loose single is just itself.
+  function coverTargets(): string[] {
+    if (!sel || !selected) return [];
+    return sel.release
       ? tracks.filter((t) => { const e = eff(t.filename); return e.release === sel.release && e.persona === sel.persona; }).map((t) => t.filename)
       : [selected];
+  }
+
+  // Embed an image (from the library or a browsed file) into the target tracks, then re-scan.
+  async function applyCover(imagePath: string) {
+    setPickerOpen(false);
+    if (!IN_TAURI) {
+      setSaveMsg("Preview mode: the cover is embedded into your files in the app.");
+      return;
+    }
     setError("");
     setSaveMsg("Setting cover…");
     try {
-      const n = await invoke<number>("set_cover", { musicDir, filenames: mates, imagePath: img });
+      const n = await invoke<number>("set_cover", { musicDir, filenames: coverTargets(), imagePath });
       const rows = await invoke<EditorTrack[]>("scan_folder", { path: musicDir });
       setTracks(rows);
       setSaveMsg(`Cover set on ${n} track${n === 1 ? "" : "s"}.`);
@@ -133,6 +150,17 @@ export function Editor({
       setError(String(e));
       setSaveMsg("");
     }
+  }
+
+  // Browse the filesystem for an image outside the library.
+  async function browseCover() {
+    if (!IN_TAURI) {
+      setSaveMsg("Preview mode: Browse opens a file dialog in the app.");
+      setPickerOpen(false);
+      return;
+    }
+    const img = await openDialog({ title: "Pick cover art", filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "gif"] }] });
+    if (typeof img === "string") await applyCover(img);
   }
 
   // Publish the saved catalog to the dossier. Requires no unsaved edits, so what publishes matches
@@ -161,6 +189,14 @@ export function Editor({
   // Group the effective tracks into release cards, split by type for the Serve preview.
   const groups = useMemo(() => buildGroups(tracks.map((t) => eff(t.filename)), artistName), [effective, tracks, artistName]);
   const dirty = Object.keys(drafts).length > 0;
+
+  // Library covers, with the one whose filename matches the release (or single title) sorted first.
+  const matchSlug = sel ? coverSlug(sel.release || sel.title) : "";
+  const sortedCovers = useMemo(() => {
+    const scored = covers.map((c) => ({ c, match: coverSlug(c.name) === matchSlug }));
+    scored.sort((a, b) => (a.match === b.match ? 0 : a.match ? -1 : 1));
+    return scored;
+  }, [covers, matchSlug]);
 
   return (
     <div className="ed">
@@ -215,13 +251,35 @@ export function Editor({
             <p className="muted pad">Pick a track.</p>
           ) : (
             <div className="ed-form">
-              <button type="button" className="cover-drop" onClick={pickCover} title="Pick cover art">
-                {sel.cover ? (
-                  <span className="cover-set"><span className="cover-check">✓</span> cover set{sel.release ? " · release" : ""}<br /><span className="muted sm">change</span></span>
-                ) : (
-                  <span>+ add cover art{sel.release ? <><br /><span className="muted sm">whole release</span></> : null}</span>
+              <div className="cover-area">
+                <button type="button" className="cover-drop" onClick={() => setPickerOpen((o) => !o)} title="Pick cover art">
+                  {sel.cover ? (
+                    <span className="cover-set"><span className="cover-check">✓</span> cover set{sel.release ? " · release" : ""}<br /><span className="muted sm">change</span></span>
+                  ) : (
+                    <span>+ add cover art{sel.release ? <><br /><span className="muted sm">whole release</span></> : null}</span>
+                  )}
+                </button>
+                {pickerOpen && (
+                  <div className="cover-picker">
+                    {sortedCovers.length === 0 ? (
+                      <p className="muted sm pad">No images in your Album Covers folder.</p>
+                    ) : (
+                      <div className="cover-grid">
+                        {sortedCovers.map(({ c, match }) => (
+                          <button key={c.path} type="button" className={`cover-tile ${match ? "match" : ""}`} onClick={() => applyCover(c.path)} title={c.name}>
+                            {IN_TAURI ? <img src={convertFileSrc(c.path)} alt="" /> : <span className="cover-ph">img</span>}
+                            <span className="cover-name">{c.name}{match ? " ✓" : ""}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="cover-picker-actions">
+                      <button type="button" className="btn ghost sm" onClick={browseCover}>Browse…</button>
+                      <button type="button" className="btn ghost sm" onClick={() => setPickerOpen(false)}>Cancel</button>
+                    </div>
+                  </div>
                 )}
-              </button>
+              </div>
               <Field label="Title"><input value={sel.title} onChange={(e) => patch("title", e.target.value)} /></Field>
               <Field label="Voice / artist" hint={sel.persona ? "AI voice" : "empty = your own voice (direct)"}>
                 <input value={sel.persona ?? ""} placeholder={artistName} onChange={(e) => patch("persona", e.target.value || null)} />

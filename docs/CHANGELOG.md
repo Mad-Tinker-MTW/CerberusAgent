@@ -1,5 +1,15 @@
 # Changelog — Cerberus Agent
 
+## [0.8.0] — 2026-07-08
+
+### Added
+- **Album Covers library picker** in the editor. The cover slot opens a grid of the images in your
+  `Album Covers/` folder (and top-level images) via a new `list_covers` command; clicking one embeds
+  it into the release's files. The cover whose filename matches the release title is highlighted and
+  sorted first (apostrophe-insensitive, so "A Soldier's Ghost" matches `a-soldiers-ghost`). Browse
+  still there for a file elsewhere.
+- Enabled the Tauri asset protocol so the picker shows real cover thumbnails.
+
 ## [0.7.0] — 2026-07-08
 
 The editor gains its publish action, cover art, and group-version credits. (cerberuslive L-057b)

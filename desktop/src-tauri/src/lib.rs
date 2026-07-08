@@ -451,6 +451,37 @@ fn set_cover(music_dir: String, filenames: Vec<String>, image_path: String) -> R
     Ok(n)
 }
 
+#[derive(Serialize)]
+struct CoverOption {
+    name: String,
+    path: String,
+}
+
+/// List candidate cover images for the library picker: the "Album Covers" subfolder (where the
+/// artist keeps release art named by title) plus any images at the top level. Only formats set_cover
+/// can embed (jpg/png/gif).
+#[tauri::command]
+fn list_covers(music_dir: String) -> Result<Vec<CoverOption>, String> {
+    let root = PathBuf::from(&music_dir);
+    let mut out: Vec<CoverOption> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for dir in [root.join("Album Covers"), root.clone()] {
+        let Ok(rd) = fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_file() && matches!(ext_of(&p).as_str(), "png" | "jpg" | "jpeg" | "gif") {
+                let path = p.to_string_lossy().to_string();
+                if seen.insert(path.clone()) {
+                    let name = p.file_stem().and_then(|s| s.to_str()).unwrap_or("cover").to_string();
+                    out.push(CoverOption { name, path });
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(out)
+}
+
 /// Publish the current on-disk catalog to the artist's dossier: re-scan the folder (so what's served
 /// matches the saved tags exactly) and register it. Named-mode, so the platform derives the liveness
 /// marker from the provisioned media origin. Returns the number of tracks published.
@@ -920,6 +951,7 @@ pub fn run() {
             scan_folder,
             write_tags,
             set_cover,
+            list_covers,
             serve_catalog,
             start_agent,
             stop_agent,

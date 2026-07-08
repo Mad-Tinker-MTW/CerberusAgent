@@ -1,4 +1,13 @@
-import type { EditorTrack } from "./Editor";
+import type { EditorTrack, CoverOption } from "./Editor";
+
+// Browser-dev fixture for the cover library picker: the owner's 4 EP covers, named by release so
+// the title-match highlights the right one.
+export const MOCK_COVERS: CoverOption[] = [
+  { name: "a-soldiers-ghost", path: "X:/Music/Album Covers/a-soldiers-ghost.png" },
+  { name: "without-confession", path: "X:/Music/Album Covers/without-confession.png" },
+  { name: "the-price-of-desire", path: "X:/Music/Album Covers/the-price-of-desire.png" },
+  { name: "highway-con-sexy", path: "X:/Music/Album Covers/highway-con-sexy.png" },
+];
 
 // Browser-dev fixture: mirrors the owner's real catalog shape so the 3-panel editor renders
 // (and grouping is exercised) without the Tauri backend. Used only when not running in Tauri.
